@@ -1,0 +1,26 @@
+# 1. Backend folder banao aur usme jao
+mkdir backend
+cd backend
+
+# 2. Node.js project initialize karo (package.json banega)
+npm init -y
+
+# 3. Required packages install karo:
+# - express: HTTP Web server framework
+# - pg: PostgreSQL client (connection pool & queries)
+# - ioredis: High-performance Redis client for caching & rate limiting
+# - dotenv: Environment variables (.env file) load karne ke liye
+# - cors: Cross-Origin Resource Sharing allow karne ke liye
+npm install express pg ioredis dotenv cors
+
+# 4. Nodemon install karo (development me file save hote hi server auto-restart karne ke liye)
+npm install --save-dev nodemon
+
+# 5. Project ke required folders create karo
+mkdir src
+mkdir src\config
+mkdir src\controllers
+mkdir src\services
+mkdir src\middlewares
+mkdir src\utils
+mkdir src\db
