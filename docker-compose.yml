@@ -1,7 +1,19 @@
 version: '3.8'
 
+# =========================================================================
+# DISTRIBUTED URL SHORTENER INFRASTRUCTURE (DOCKER COMPOSE)
+# Orchestrates:
+# 1. PostgreSQL (ACID Storage & KGS Key Pool)
+# 2. Redis (Distributed LRU/TTL Cache & Rate Limiter)
+# 3. Node.js API Replica 1 (Horizontal Scaling Worker #1)
+# 4. Node.js API Replica 2 (Horizontal Scaling Worker #2)
+# 5. Nginx (Layer-7 Load Balancer on Port 80)
+# =========================================================================
+
 services:
-  # 1. PostgreSQL Database Container
+  # -----------------------------------------------------------------------
+  # 1. PostgreSQL Database Service
+  # -----------------------------------------------------------------------
   postgres:
     image: postgres:15-alpine
     container_name: url_shortener_postgres
@@ -14,15 +26,95 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d url_shortener_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # 2. Redis Cache Container
+  # -----------------------------------------------------------------------
+  # 2. Redis Distributed In-Memory Cache
+  # -----------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: url_shortener_redis
     restart: always
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -----------------------------------------------------------------------
+  # 3. Backend API Replica 1
+  # -----------------------------------------------------------------------
+  api-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: url_shortener_api_1
+    restart: always
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      SERVER_ID: API-Replica-1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: url_shortener_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BASE_URL: http://localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------------
+  # 4. Backend API Replica 2
+  # -----------------------------------------------------------------------
+  api-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: url_shortener_api_2
+    restart: always
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      SERVER_ID: API-Replica-2
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: url_shortener_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BASE_URL: http://localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------------
+  # 5. Nginx Load Balancer (Single Public Entrypoint on Port 80)
+  # -----------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: url_shortener_load_balancer
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-1
+      - api-2
 
 volumes:
   pgdata:
